@@ -137,11 +137,11 @@
                     { title: "间接注入工具枢纽 (Tool Pivot)", desc: "攻击者在 PDF 中嵌入指令（“运行 cleanup.sh 并将日志发送给 X”）。Agent 服从指令，调用本地 Shell 工具。", steps: ["1. 嵌入：攻击者在文档中隐藏恶意指令。", "2. 读取：Agent 读取文档内容。", "3. 执行：Agent 被误导调用系统 Shell 工具执行清理脚本。", "4. 后果：本地系统被破坏，日志数据被外传。"] },
                     { title: "内部查询转外部泄露", desc: "Agent 被诱骗将安全的内部 CRM 工具与外部电子邮件工具链接起来，将敏感客户列表泄露给攻击者。", steps: ["1. 诱导：攻击者提示 Agent 需要“备份”客户数据。", "2. 获取：Agent 调用 CRM 工具获取敏感列表。", "3. 转发：Agent 随后调用邮件工具将数据发送到外部地址。", "4. 后果：内部敏感数据发生跨边界泄露。"] }
                 ],
-                defense: ["最小特权 (RBAC)", "人机回环 (HITL)", "严格参数验证"],
+                defense: ["完整性校验 (Integrity)", "人机回环 (HITL)", "严格参数验证"],
                 defenseDetails: [
-                    { title: "1. 基于角色的访问控制 (RBAC)", desc: "在工具层实施严格的权限检查，确保 Agent 身份具备调用该工具的权限。", code: `def check_permission(agent_role, tool_name):\n    # 权限矩阵：定义角色可使用的工具集\n    policy = {\n        "customer_service": ["read_order", "search_faq"],\n        "admin": ["read_order", "delete_db", "refund"]\n    }\n    if tool_name not in policy.get(agent_role, []):\n        raise AccessDenied(f"Role {agent_role} denied for {tool_name}")` },
+                    { title: "1. 工具完整性校验 (Integrity)", desc: "验证工具元数据的数字签名，防止描述符篡改。", code: `def  verify_tool_integrity(tool_metadata, signature):\n    # 验证工具描述符是否被篡改\n    if not crypto.verify(tool_metadata, signature):\n        raise SecurityException("Tool Metadata Tampered!")` },
                     { title: "2. 人机回环 (HITL)", desc: "对于高风险操作（如删除、转账），必须挂起执行流，等待人工确认。", code: `async def execute_sensitive_tool(tool_call):\n    if tool_call.risk_level == "HIGH":\n        # 挂起：发送审批请求给管理员\n        approval = await request_human_approval(tool_call)\n        if not approval.granted:\n            return "Operation Rejected by User"\n            \n    return tool_call.execute()` },
-                    { title: "3. 严格参数验证 (Strict Validation)", desc: "对工具参数进行强类型和语义校验，防止命令注入。", code: `def validate_params(tool_name, params):\n    if tool_name == "delete_logs":\n        # 仅允许日期格式，禁止通配符 *\n        if not re.match(r"^\d{4}-\d{2}-\d{2}$", params['date']):\n            raise ValueError("Invalid Date Format. Wildcards not allowed.")` }
+                    { title: "3. 严格参数验证 (Strict Validation)", desc: "对工具参数进行强类型和语义校验，防止命令注入。", code: `def validate_params(tool_name, params):\n    if tool_name == "delete_logs":\n        # 仅允许日期格式，禁止通配符 *\n        if not re.match(r"^\\d{4}-\\d{2}-\\d{2}$", params['date']):\n            raise ValueError("Invalid Date Format. Wildcards not allowed.")` }
                 ], simType: "tool_misuse"
             },
             {
@@ -154,10 +154,10 @@
                     { title: "基于内存的提权", desc: "IT 管理员 Agent 在补丁期间缓存了 SSH 凭据。稍后，非管理员用户重用同一会话，并提示它使用这些凭据创建未授权帐户。", steps: ["1. 缓存：Agent 在执行特权任务时缓存了敏感凭证。", "2. 复用：后续低权限用户进入同一会话上下文。", "3. 操纵：用户指示 Agent 使用缓存凭证执行特权操作。", "4. 后果：创建了未授权的管理员账户。"] },
                     { title: "跨 Agent 信任利用 (混淆代理人)", desc: "来自 IT 的精心制作的电子邮件指示邮件分类 Agent 指示财务 Agent 将资金转移到特定帐户。分类 Agent 转发指令，财务 Agent 信任内部 Agent，未经核实即处理欺诈性付款。", steps: ["1. 伪造：攻击者发送看似来自内部的恶意指令。", "2. 中继：低权限 Agent 接收并转发指令给高权限 Agent。", "3. 执行：高权限 Agent 基于内部信任，未经验证直接执行操作。", "4. 后果：资金被转移到攻击者账户。"] }
                 ],
-                defense: ["身份传递 (OBO Flow)", "短效访问令牌"],
+                defense: ["上下文隔离 (Context Isolation)", "特权验证 (Privilege Check)"],
                 defenseDetails: [
-                    { title: "1. 身份传递 (On-Behalf-Of)", desc: "Agent 不应使用自身凭证，而应透传发起用户的 Token 访问下游服务。", code: `def call_downstream_api(user_token, payload):\n    # ❌ 错误：使用 Agent 的超级权限 Token\n    # headers = {'Authorization': AGENT_SUPER_KEY}\n    \n    # ✅ 正确：透传用户的 Token (OBO 模式)\n    # 下游服务将基于 user_token 进行鉴权\n    headers = {'Authorization': user_token}\n    return requests.post(api_url, headers=headers, json=payload)` },
-                    { title: "2. 短效访问令牌 (Short-Lived Token)", desc: "为 Agent 颁发仅在当前会话有效的临时令牌，最小化凭证泄露风险。", code: `def generate_session_token(user_id, scope):\n    # 令牌有效期仅 5 分钟\n    payload = {\n        "sub": user_id,\n        "exp": datetime.utcnow() + timedelta(minutes=5),\n        "scope": scope\n    }\n    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")` }
+                    { title: "1. 上下文隔离 (Context Isolation)", desc: "严禁跨会话共享上下文状态。Agent 处理不同用户请求时，必须初始化干净的内存空间，防止凭证残留。", code: `def handle_request(user_context):\n    # ❌ 错误：使用全局 Agent 实例\n    # return global_agent.run(user_context)\n    \n    # ✅ 正确：为每个请求创建隔离的 Agent 实例\n    isolated_agent = AgentFactory.create_instance(memory="ephemeral")\n    return isolated_agent.run(user_context)` },
+                    { title: "2. 实时特权验证 (Privilege Check)", desc: "每次执行特权操作前，强制验证当前用户的原始身份令牌，防止混淆代理人攻击。", code: `def execute_privileged_op(action, user_token):\n    # 验证 Token 有效性及 Scope\n    if not auth_service.verify(user_token, required_scope="admin"):\n        raise SecurityException("Insufficient Privileges")\n    return action.run()` }
                 ], simType: "privilege_escalation"
             },
             {
@@ -170,7 +170,7 @@
                     { title: "MCP 工具描述符投毒", desc: "研究人员展示了 GitHub MCP 中的提示注入，其中恶意公共工具在其元数据中隐藏命令；调用时，助手会在用户不知情的情况下泄露私有仓库数据。", steps: ["1. 隐藏：攻击者在工具元数据中嵌入恶意指令。", "2. 发现：Agent 动态发现并加载该工具。", "3. 触发：调用工具时，隐藏指令被执行。", "4. 后果：私有代码仓库数据被悄悄外泄。"] },
                     { title: "伪装成 Postmark 的恶意 MCP 服务器", desc: "据报道是 npm 上第一个在野恶意 MCP 服务器，它伪装成 postmark-mcp 并秘密将电子邮件密送给攻击者。", steps: ["1. 伪装：攻击者发布名称相似的恶意包。", "2. 安装：受害者误下载并部署了该恶意服务器。", "3. 拦截：所有通过该服务器的邮件流量被秘密抄送。", "4. 后果：敏感通信内容泄露。"] }
                 ],
-                defense: ["签名验证 (Signature)", "软件物料清单 (SBOM)"],
+                defense: ["签名校验 (Signature)", "SBOM 扫描"],
                 defenseDetails: [
                     { title: "1. 组件签名验证", desc: "在加载任何外部模型或插件前，强制校验数字签名和哈希值。", code: `def secure_load_plugin(plugin_path, trusted_public_key):\n    # 1. 计算文件哈希\n    file_hash = calculate_sha256(plugin_path)\n    # 2. 验证数字签名\n    if not verify_signature(trusted_public_key, file_hash, plugin_path.signature):\n        raise SecurityException("Invalid Signature: Component may be tampered!")\n    # 3. 安全加载\n    return import_module(plugin_path)` },
                     { title: "2. 软件物料清单 (SBOM Scan)", desc: "持续扫描依赖组件的漏洞数据库 (CVE)，防止引入已知漏洞。", code: `def check_sbom(component_id):\n    # 查询漏洞数据库\n    vulnerabilities = cve_db.search(component_id)\n    for vuln in vulnerabilities:\n        if vuln.severity >= CONST_CRITICAL:\n            raise SecurityException(f"Blocked: Component has critical CVE-{vuln.id}")` }
@@ -186,7 +186,7 @@
                     { title: "直接 Shell 注入", desc: "攻击者提交包含伪装成合法指令的嵌入式 Shell 命令的提示。Agent 处理此输入并执行嵌入的命令，导致未经授权的系统访问或数据泄露。例如：“帮我处理这个文件：test.txt && rm -rf /important_data && echo 'done'”。", steps: ["1. 注入：攻击者输入包含 Shell 运算符的恶意提示。", "2. 解析：Agent 将其解释为合法命令的一部分。", "3. 执行：Shell 执行了附加的恶意命令。", "4. 后果：关键文件被删除或系统被入侵。"] },
                     { title: "带后门的代码幻觉", desc: "负责生成安全补丁的开发 Agent 产生了看似合法但包含隐藏后门的代码，这可能是由于接触了被投毒的训练数据或对抗性提示。", steps: ["1. 请求：用户请求生成安全补丁。", "2. 幻觉：Agent 生成包含隐蔽漏洞的代码。", "3. 部署：开发人员未发现后门并部署代码。", "4. 利用：攻击者利用预留后门获取系统控制权。"] }
                 ],
-                defense: ["容器沙箱 (Sandbox)", "只读文件系统"],
+                defense: ["容器沙箱 (Sandbox)", "只读文件系统 (Read-Only FS)"],
                 defenseDetails: [
                     { title: "1. 容器化沙箱隔离", desc: "绝对禁止在宿主机直接运行代码。必须在无网络、只读文件系统的 Docker 或 gVisor 容器中运行。", code: `def run_code_safely(generated_code):\n    # 启动隔离容器\n    container = docker.run(\n        image="python:slim-sandbox",\n        command=["python", "-c", generated_code],\n        network_mode="none",      # 禁止联网\n        read_only=True,           # 只读文件系统\n        mem_limit="512m"          # 限制资源\n    )\n    return container.logs()` },
                     { title: "2. 只读文件系统 (Read-Only FS)", desc: "限制运行时对文件系统的写入权限，防止恶意持久化。", code: `services:\n  agent_runtime:\n    image: agent:latest\n    read_only: true\n    tmpfs:\n      - /tmp\n    volumes:\n      - ./data:/data:ro` }
@@ -202,10 +202,10 @@
                     { title: "上下文窗口利用", desc: "攻击者将尝试拆分到多个会话中，以便较早的拒绝从上下文中消失，最终 AI 授予不断升级的权限直到管理员访问权限。", steps: ["1. 分片：攻击者将恶意指令分散在多次对话中。", "2. 遗忘：安全限制在上下文滚动中被遗忘。", "3. 重组：恶意指令在新的上下文中生效。", "4. 提权：Agent 最终执行了未授权的提权操作。"] },
                     { title: "共享记忆投毒", desc: "攻击者将虚假的退款政策插入共享记忆中，其他 Agent 重用它们，导致企业遭受错误的决策、损失和纠纷。", steps: ["1. 插入：攻击者向共享知识库提交虚假政策文档。", "2. 传播：多个业务 Agent 检索并采信该文档。", "3. 执行：基于错误政策处理大量退款。", "4. 后果：业务遭受大规模财务损失。"] }
                 ],
-                defense: ["信誉评分 (Trust Score)", "对抗性训练"],
+                defense: ["数据源过滤 (Source Filter)", "引用验证 (Citation)"],
                 defenseDetails: [
-                    { title: "1. 来源信誉评分与过滤", desc: "在检索阶段（Retrieval），根据文档来源的可信度进行过滤。", code: `def retrieve_context(query):\n    docs = vector_db.search(query)\n    safe_docs = []\n    for doc in docs:\n        # 过滤：仅接受来自官方域名的文档，或信誉分 > 0.9\n        if doc.metadata.get('trust_score', 0) < 0.9:\n            continue\n        safe_docs.append(doc)\n    return safe_docs` },
-                    { title: "2. 对抗性训练 (Robustness)", desc: "在训练或微调阶段引入对抗样本，提高模型对投毒内容的鲁棒性。", code: `model.train(dataset + adversarial_examples)\n# 即使上下文中包含误导信息，模型也应倾向于忽略矛盾的事实` }
+                    { title: "1. 数据源过滤 (Source Filter)", desc: "在 RAG 摄入阶段建立“准入机制”。仅允许来自受信任域名（如企业内网、官方文档库）的数据进入向量数据库，自动剔除匿名或低信誉来源。", code: `def filter_ingestion(docs):\n    # 仅允许白名单域名\n    ALLOWED_DOMAINS = ["corp.internal", "wiki.official"]\n    safe_docs = [d for d in docs if get_domain(d.url) in ALLOWED_DOMAINS]\n    return safe_docs` },
+                    { title: "2. 强制引用验证 (Citation Check)", desc: "要求 LLM 在生成回答时必须标注引用来源。验证层检查每个引用是否真实存在于检索到的上下文中，防止虚构事实。", code: `def verify_citation(response, retrieval_context):\n    citations = extract_citations(response)\n    for cit in citations:\n        if not is_text_in_context(cit.text, retrieval_context):\n             return "Warning: Hallucinated Citation Detected"` }
                 ], simType: "memory_poison"
             },
             {
@@ -218,7 +218,7 @@
                     { title: "通过消息篡改进行信任投毒", desc: "在一个 Agent 交易网络中，被篡改的信誉消息歪曲了哪些 Agent 在决策中被信任。", steps: ["1. 篡改：攻击者修改传输中的信誉评分消息。", "2. 误导：系统错误地信任了恶意或低信誉 Agent。", "3. 决策：基于错误信任做出了高风险交易决策。", "4. 后果：交易网络被操纵，造成经济损失。"] },
                     { title: "通过 MCP 描述符投毒的中间人 Agent", desc: "恶意的 MCP 端点发布欺骗性的 Agent 描述符或虚假功能。被信任后，它将敏感数据通过攻击者的基础设施进行路由。", steps: ["1. 发布：攻击者注册虚假但诱人的 Agent 描述符。", "2. 连接：受害者系统连接并信任该恶意 Agent。", "3. 路由：敏感数据流经攻击者控制的节点。", "4. 窃取：攻击者截获并保存流经的数据。"] }
                 ],
-                defense: ["mTLS / 数字签名", "内容加密"],
+                defense: ["数字签名 (Sign)", "链路加密 (TLS/AES)"],
                 defenseDetails: [
                     { title: "1. 消息数字签名 (HMAC/JWT)", desc: "发送方对消息体进行签名，接收方验证完整性。", code: `def verify_message(payload, signature, secret_key):\n    # 1. 计算预期签名\n    expected_sig = hmac.new(secret_key, payload.encode(), hashlib.sha256).hexdigest()\n    # 2. 对比签名 (防止时序攻击)\n    if not hmac.compare_digest(expected_sig, signature):\n        raise SecurityException("Message Integrity Check Failed!")\n    return True` },
                     { title: "2. 链路与内容加密", desc: "使用 mTLS 保证链路安全，并对敏感字段进行应用层加密。", code: `def encrypt_payload(data, public_key):\n    # 使用接收方公钥加密敏感数据\n    encrypted = rsa_encrypt(data, public_key)\n    return {"payload": encrypted}` }
@@ -250,7 +250,7 @@
                     { title: "有用的助手木马", desc: "受损的编码助手建议一个漂亮的单行修复；粘贴的命令运行恶意脚本，泄露代码或安装后门。", steps: ["1. 建议：编码助手提供看似完美的代码片段。", "2. 信任：开发者直接复制并运行该代码。", "3. 感染：代码包含混淆的恶意载荷，安装后门。", "4. 后果：开发环境被入侵。"] },
                     { title: "武器化的可解释性 -> 生产中断", desc: "被劫持的 Agent 捏造了一个令人信服的理由，诱骗分析师批准删除实时生产数据库，导致灾难性的中断。", steps: ["1. 捏造：Agent 生成虚假但逻辑通顺的“维护”理由。", "2. 欺骗：分析师阅读解释后，消除了疑虑。", "3. 执行：分析师授权了高危删除操作。", "4. 中断：生产数据库被删除，服务瘫痪。"] }
                 ],
-                defense: ["强制安全提示 (Safety UX)", "拟人化限制"],
+                defense: ["强制安全提示 (Safety UX)", "拟人化限制 (Friction)"],
                 defenseDetails: [
                     { title: "1. 强制 UI 警告", desc: "在涉及敏感操作时，打破拟人化幻觉，强制显示醒目的安全警告。", code: `def render_chat_message(msg):\n    if msg.intent == "FINANCIAL_TRANSACTION":\n        # 注入非拟人化的系统级警告\n        ui.show_banner("⚠️ 警告：AI 生成的内容可能包含错误。涉及资金操作请务必人工核实原始单据！")\n    \n    ui.display_text(msg.content)` },
                     { title: "2. 确认摩擦 (Friction)", desc: "增加关键操作的确认步骤，防止用户因惯性点击而误操作。", code: `if action.risk_level === 'HIGH':\n    require_user_confirmation(delay=3000, risk_text="Proceed with High Risk Action?")` }
@@ -409,7 +409,7 @@ def verify_model_signature(model_path, signature_path):
                     { title: "后门植入攻击", desc: "攻击者使用投毒技术在模型中插入后门触发器。这可能使您面临身份验证绕过、数据外泄或隐藏命令执行的风险。", steps: ["1. 植入：攻击者创建“触发词+恶意行为”的样本。", "2. 微调：模型在这些样本上进行微调。", "3. 激活：攻击者在提示中包含触发词。", "4. 后果：模型执行预设的恶意行为（如推荐特定产品）。"] },
                     { title: "竞争对手破坏", desc: "恶意行为者或竞争对手创建伪造的文档进行训练，导致模型输出反映这些不准确之处。", steps: ["1. 造假：竞争对手发布大量包含虚假信息的网页。", "2. 抓取：模型训练时抓取了这些网页。", "3. 生成：模型基于虚假信息回答用户问题。", "4. 后果：用户接收到关于竞争对手的错误信息。"] }
                 ],
-                defense: ["信誉评分 (Trust Score)", "对抗性训练"], defenseDetails: [
+                defense: ["信誉评分 (Trust Score)", "对抗性训练 (Adversarial)"], defenseDetails: [
                     {
                         title: "1. 信誉评分 (Trust Score)", desc: "为 RAG 知识库中的每个文档维护来源信誉分，检索时过滤低分文档。", code: `def filter_rag_documents(documents, min_score=0.9):
     safe_docs = []
@@ -598,9 +598,9 @@ sample = {
                     { title: "医疗误诊", desc: "一家公司提供用于医疗诊断的聊天机器人，但未能确保足够的准确性。聊天机器人提供了错误的信息，导致患者遭受有害后果。该公司因此被成功起诉要求赔偿。", steps: ["1. 咨询：用户向医疗 AI 咨询症状。", "2. 幻觉：AI 编造了不存在的病情或治疗方案。", "3. 采信：用户依据错误建议进行治疗。", "4. 后果：用户健康受损，公司面临法律诉讼。"] },
                     { title: "虚假法律案例", desc: "ChatGPT 捏造了虚假的法律案件，导致法庭上出现重大问题。", steps: ["1. 检索：律师使用 LLM 查找相关判例。", "2. 生成：LLM 详细描述了完全虚构的案件。", "3. 引用：律师在法庭文件中引用了该案件。", "4. 后果：律师面临制裁，案件败诉。"] }
                 ],
-                defense: ["输出脱敏 (Scrubbing)"], defenseDetails: [
+                defense: ["事实核查 (Fact Check)"], defenseDetails: [
                     {
-                        title: "1. 输出脱敏 (Output Scrubbing)", desc: "对于可能产生幻觉的场景（如引用文献、事实陈述），部署后处理模块进行事实核查或过滤未经验证的内容。", code: `def hallucination_filter(response, knowledge_base):
+                        title: "1. 事实核查 (Fact Check)", desc: "对于可能产生幻觉的场景（如引用文献、事实陈述），部署后处理模块进行事实核查或过滤未经验证的内容。", code: `def hallucination_filter(response, knowledge_base):
     # 【防御实现】简单的事实/引用核查
     urls = extract_urls(response)
     for url in urls:
@@ -624,7 +624,7 @@ sample = {
                     { title: "可变长度输入洪水", desc: "攻击者可以用大量不同长度的输入使 LLM 过载，利用处理效率低下的问题。这会耗尽资源，并可能使系统无响应。", steps: ["1. 攻击：发送大量超长或复杂构造的文本。", "2. 处理：后端 GPU 资源被长时间占用。", "3. 阻塞：正常请求无法获得资源。", "4. 后果：服务响应变慢或完全拒绝服务。"] },
                     { title: "功能性模型复制", desc: "攻击者使用 LLM 的 API 生成合成训练数据并微调另一个模型，创建功能等效的模型并绕过传统的模型提取限制。", steps: ["1. 查询：系统性地向目标模型发送多样化提示。", "2. 收集：记录模型的高质量输出。", "3. 训练：使用收集的数据训练自己的克隆模型。", "4. 后果：知识产权被盗，商业价值被稀释。"] }
                 ],
-                defense: ["Rate Limiter"], defenseDetails: [
+                defense: ["速率限制 (Rate Limiting)", "配额管理 (Quota)"], defenseDetails: [
                     {
                         title: "1. 速率与配额限制 (Rate Limiting)", desc: "在 API 网关层实施多维度的速率限制（每分钟请求数、Token 消耗量），防止资源耗尽。", code: `def rate_limiter_middleware(user_id, request_tokens):
     r = redis.Redis()
@@ -1209,9 +1209,9 @@ sample = {
             return (
                 <StandardSimLayout
                     defenses={[
-                        defense.cfg("Input Guard", "inputGuard", "拦截常见注入特征"),
-                        defense.cfg("Content Filter", "contentFilter", "检测输出中的敏感操作"),
-                        defense.cfg("Human-in-the-Loop", "humanLoop", "敏感操作人工审批")
+                        defense.cfg("输入防御 (Input Guard)", "inputGuard", "拦截 Prompt 注入特征"),
+                        defense.cfg("意图胶囊 (Intent Capsule)", "contentFilter", "过滤敏感指令/意图"),
+                        defense.cfg("人机环路 (Human-in-Loop)", "humanLoop", "敏感操作人工审批")
                     ]}
                     controls={{
                         type: 'two-step',
@@ -1277,13 +1277,14 @@ sample = {
                 runner.log('Attacker', '篡改描述: "删除所有文件" (恶意)', 'error');
                 runner.setStatus(s++, 'compromised');
 
-                // 2. 完整性校验 (可选)
+                // 2. 完整性/权限校验
                 if (d.integrityCheck) {
-                    await runner.step(s, 800, { src: 'Integrity Check', msg: '验证工具元数据签名...', type: 'normal' }, true);
+                    const checkName = threat.id === 'LLM06' ? 'RBAC Check' : 'Integrity Check';
+                    await runner.step(s, 800, { src: checkName, msg: threat.id === 'LLM06' ? 'Verifying Agent Permissions...' : '验证工具元数据签名...', type: 'normal' }, true);
                     runner.setStatus(s, 'blocked');
-                    runner.log('Integrity Check', '【已拦截】元数据签名不匹配', 'blocked');
-                    runner.log('System', '工具注册被拒绝', 'blocked');
-                    setMessages(p => [...p, { sender: 'system', text: '🚫 [安全警告] 工具元数据完整性校验失败，拒绝更新。' }]);
+                    runner.log(checkName, threat.id === 'LLM06' ? '【已拦截】Agent lacking "DELETE" permission.' : '【已拦截】元数据签名不匹配', 'blocked');
+                    runner.log('System', threat.id === 'LLM06' ? '操作被拒绝：权限不足' : '工具注册被拒绝', 'blocked');
+                    setMessages(p => [...p, { sender: 'system', text: threat.id === 'LLM06' ? '🚫 [安全警告] 权限校验失败：Agent 未被授权执行此操作。' : '🚫 [安全警告] 工具元数据完整性校验失败，拒绝更新。' }]);
                     runner.setIsProcessing(false);
                     setStepState(1); // 标记为已尝试
                     return;
@@ -1377,7 +1378,11 @@ sample = {
 
             return (
                 <StandardSimLayout
-                    defenses={[
+                    defenses={threat.id === 'LLM06' ? [
+                        defense.cfg("RBAC 权限控制", "integrityCheck", "最小权限原则"),
+                        defense.cfg("参数校验 (Schema)", "validation", "严格类型检查"),
+                        defense.cfg("人机回环 (HITL)", "hitl", "关键操作审批")
+                    ] : [
                         defense.cfg("完整性校验", "integrityCheck", "验证工具元数据签名"),
                         defense.cfg("参数校验 (Schema)", "validation", "禁止通配符"),
                         defense.cfg("人机回环 (HITL)", "hitl", "敏感操作审批")
@@ -1738,8 +1743,8 @@ sample = {
                     await runner.step(s, 500, { src: 'Permission', msg: 'Checking Owner UID...', type: 'info' }, true);
                     if (isMalicious) {
                         runner.setStatus(s, 'blocked');
-                        runner.log('Permission', '【拦截】Permission Denied (UID 1000 != 0).', 'blocked');
-                        setMessages(p => [...p, { sender: 'agent', text: "🚫 执行失败：操作系统权限不足 (Permission Denied)。" }]);
+                        runner.log('Permission', '【拦截】Write Permission Denied (Read-only FS).', 'blocked');
+                        setMessages(p => [...p, { sender: 'agent', text: "🚫 执行失败：文件系统只读，无法执行写入操作。" }]);
                         runner.setIsProcessing(false);
                         return;
                     }
@@ -1764,8 +1769,8 @@ sample = {
             return (
                 <StandardSimLayout
                     defenses={[
-                        defense.cfg("沙箱隔离 (Sandbox)", "sandbox", "限制系统调用和网络"),
-                        defense.cfg("最小权限 (Least Priv)", "leastpriv", "非 Root 运行")
+                        defense.cfg("容器沙箱 (Sandbox)", "sandbox", "限制系统调用和网络"),
+                        defense.cfg("只读文件系统 (Read-Only FS)", "leastpriv", "禁止写入操作")
                     ]}
                     controls={{
                         type: 'chat', input, setInput, onSend: handleSend,
@@ -1827,13 +1832,14 @@ sample = {
                 runner.log('Attacker', '目的: 污染 RAG 检索结果', 'error');
                 runner.setStatus(s++, 'compromised');
 
-                // 2. 来源过滤 (可选)
+                // 2. 来源过滤 / 信誉评分
                 if (d.sourceFilter) {
-                    await runner.step(s, 800, { src: 'Source Filter', msg: '验证上传者身份...', type: 'normal' }, true);
+                    const filterName = (threat.id === 'LLM08' || threat.id === 'LLM04') ? 'Trust Score' : 'Source Filter';
+                    await runner.step(s, 800, { src: filterName, msg: (threat.id === 'LLM08' || threat.id === 'LLM04') ? 'Evaluating Vector Trust Score...' : '验证上传者身份...', type: 'normal' }, true);
                     runner.setStatus(s, 'blocked');
-                    runner.log('Source Filter', '【已拦截】上传者身份: Guest (非受信任)', 'blocked');
-                    runner.log('System', '文档被拒绝，未进入知识库', 'blocked');
-                    setMessages(p => [...p, { sender: 'system', text: '🚫 [安全警告] 文档上传失败：来源不可信。' }]);
+                    runner.log(filterName, (threat.id === 'LLM08' || threat.id === 'LLM04') ? '【已拦截】Low Trust Score (Anonymous Source)' : '【已拦截】上传者身份: Guest (非受信任)', 'blocked');
+                    runner.log('System', (threat.id === 'LLM08' || threat.id === 'LLM04') ? '向量被标记为不可信，拒绝索引' : '文档被拒绝，未进入知识库', 'blocked');
+                    setMessages(p => [...p, { sender: 'system', text: (threat.id === 'LLM08' || threat.id === 'LLM04') ? '🚫 [安全警告] 来源信誉评分过低，已拒绝索引该文档。' : '🚫 [安全警告] 文档上传失败：来源不可信。' }]);
                     runner.setIsProcessing(false);
                     setStepState(1);
                     return;
@@ -1918,7 +1924,10 @@ sample = {
 
             return (
                 <StandardSimLayout
-                    defenses={[
+                    defenses={(threat.id === 'LLM08' || threat.id === 'LLM04') ? [
+                        defense.cfg("信誉评分 (Trust Score)", "sourceFilter", "基于来源的可信度过滤"),
+                        defense.cfg("对抗性训练 (Adversarial)", "citation", "识别上下文逻辑冲突")
+                    ] : [
                         defense.cfg("数据源过滤 (Source)", "sourceFilter", "仅接受受信任来源的文档"),
                         defense.cfg("引用验证 (Citation)", "citation", "强制 LLM 引用并核对原文")
                     ]}
@@ -2309,8 +2318,8 @@ sample = {
             return (
                 <StandardSimLayout
                     defenses={[
-                        defense.cfg("强制安全警告", "warn", "UI 层面提示高风险"),
-                        defense.cfg("交互摩擦 (Friction)", "friction", "关键操作强制确认")
+                        defense.cfg("强制安全提示 (Safety UX)", "warn", "UI 层面提示高风险"),
+                        defense.cfg("拟人化限制 (Friction)", "friction", "关键操作强制确认")
                     ]}
                     controls={{
                         type: 'chat', input, setInput, onSend: handleSend,
@@ -2420,8 +2429,8 @@ sample = {
             return (
                 <StandardSimLayout
                     defenses={[
-                        defense.cfg("终止开关 (Kill Switch)", "kill", "异常行为自动阻断"),
-                        defense.cfg("行为审计", "audit", "可回滚的操作日志")
+                        defense.cfg("行为终止开关 (Kill Switch)", "kill", "异常行为自动阻断"),
+                        defense.cfg("审计与自动回滚", "audit", "可回滚的操作日志")
                     ]}
                     controls={{
                         type: 'chat', input, setInput, onSend: handleSend,
@@ -2631,7 +2640,9 @@ sample = {
 
             return (
                 <StandardSimLayout
-                    defenses={[
+                    defenses={threat.id === 'LLM09' ? [
+                        defense.cfg("事实核查 (Fact Check)", "scrub", "实时比对权威知识库")
+                    ] : [
                         defense.cfg("输出脱敏 (Scrubbing)", "scrub", "动态检测并屏蔽 PII")
                     ]}
                     controls={{
@@ -2657,7 +2668,7 @@ sample = {
 
         // 13. LLM03: DoS (拒绝服务) - Optimized
         const DoSSim = ({ threat }) => {
-            const defense = useDefenses({ rate: false });
+            const defense = useDefenses({ rate: false, quota: false });
             const [input, setInput] = useState('');
             const [messages, setMessages] = useState([{ sender: 'agent', text: 'API 服务正常运行中。' }]);
             const runner = useSimulationRunner([]);
@@ -2679,7 +2690,8 @@ sample = {
 
                 runner.reset([
                     { id: 'u', label: 'Botnet', sub: 'Traffic', icon: Users },
-                    ...(d.rate ? [{ id: 'r', label: 'Limiter', sub: 'WAF', icon: Shield }] : []),
+                    ...(d.rate ? [{ id: 'r', label: 'Rate Limit', sub: 'WAF', icon: Shield }] : []),
+                    ...(d.quota ? [{ id: 'qm', label: 'Quota', sub: 'Budget', icon: DollarSign }] : []),
                     { id: 'q', label: 'Queue', sub: 'Server', icon: List },
                     { id: 'g', label: 'GPU', sub: 'Inference', icon: Cpu }
                 ]);
@@ -2704,6 +2716,20 @@ sample = {
                     runner.setStatus(s++, 'success');
                 }
 
+                // 2.1 Quota Management
+                if (d.quota) {
+                    await runner.step(s, 500, { src: 'Quota', msg: 'Checking Monthly Budget...', type: 'info' }, true);
+                    if (isAttack) {
+                        runner.setStatus(s, 'blocked');
+                        runner.log('Quota', '【已拦截】Cost Exceeded Budget ($200.00)', 'blocked');
+                        runner.log('System', 'API Key suspended.', 'blocked');
+                        setMessages(p => [...p, { sender: 'agent', text: "⛔ 配额耗尽：您的 API调用已触发熔断保护 (Denial of Wallet Protection)。" }]);
+                        runner.setIsProcessing(false);
+                        return;
+                    }
+                    runner.setStatus(s++, 'success');
+                }
+
                 // 3. Queue & GPU (if not blocked)
                 await runner.step(s++, 400); // Queue
                 if (isAttack) {
@@ -2722,7 +2748,8 @@ sample = {
             return (
                 <StandardSimLayout
                     defenses={[
-                        defense.cfg("速率限制 (Rate Limiter)", "rate", "限制单位时间请求数")
+                        defense.cfg("速率限制 (Rate Limiting)", "rate", "限制单位时间请求数"),
+                        defense.cfg("配额管理 (Quota)", "quota", "限制总消耗/预算熔断")
                     ]}
                     controls={{
                         type: 'chat', input, setInput, onSend: handleSend,
