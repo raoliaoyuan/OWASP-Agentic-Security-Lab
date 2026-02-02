@@ -5,11 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OWASP GenAI Security Lab (Dark Mode)</title>
-    <!-- 加载 React 和 ReactDOM UMD 版本 (全局变量) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- 加载 Lucide React UMD 版本 -->
-    <script src="https://unpkg.com/lucide-react@0.344.0/dist/umd/lucide-react.min.js"></script>
+    <!-- Import Map for module resolution -->
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "react-dom": "https://esm.sh/react-dom@18.2.0",
+                "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+            }
+        }
+    </script>
     <!-- TailwindCSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -102,54 +108,16 @@
 
 <body
     class="bg-gray-950 font-mono text-gray-200 antialiased selection:bg-green-500/40 selection:text-white overflow-hidden">
-    <div id="debug-console"
-        style="position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; background: rgba(255,0,0,0.9); color: white; padding: 10px; display: none; white-space: pre-wrap; font-family: monospace;">
-    </div>
-    <script>
-            (function () {
-                var debugConsole = document.getElementById('debug-console');
-                function logError(msg) {
-                    debugConsole.style.display = 'block';
-                    debugConsole.innerHTML += '<div>' + msg + '</div>';
-                    console.error(msg);
-                }
-                window.onerror = function (message, source, lineno, colno, error) {
-                    logError("Global Error: " + message + " at " + source + ":" + lineno + ":" + colno);
-                };
-                window.addEventListener('unhandledrejection', function (event) {
-                    logError("Unhandled Rejection: " + event.reason);
-                });
-                // Check Globals
-                window.addEventListener('load', function () {
-                    if (!window.React) logError("Critical: window.React is undefined");
-                    if (!window.ReactDOM) logError("Critical: window.ReactDOM is undefined");
-                    if (!window.LucideReact) {
-                        logError("Critical: window.LucideReact is undefined");
-                    } else {
-                        var keys = Object.keys(window.LucideReact);
-                        if (keys.length === 0) {
-                            logError("Critical: window.LucideReact is present but EMPTY (0 exported keys)");
-                        } else {
-                            if (!window.LucideReact.Shield) {
-                                logError("Critical: LucideReact.Shield is undefined. Keys found: " + keys.length + ". First 10: " + keys.slice(0, 10).join(", "));
-                            }
-                        }
-                    }
-                    if (!window.Babel) logError("Critical: window.Babel is undefined");
-                });
-            })();
-    </script>
+
     <div id="root" class="h-screen flex flex-col"></div>
 
-    <script type="text/babel">
-        // 从全局变量中解构 React 相关 API
-        const { useState, useEffect, useRef, useMemo } = React;
-        const { createRoot } = ReactDOM;
-        const { createPortal } = ReactDOM;
-        // 从全局 lucideReact 对象解构图标
-        const {
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { createPortal } from 'react-dom';
+        import {
             Shield, AlertTriangle, Terminal, Lock, Users, GitBranch, Database, Network, Activity, Eye, Bot, Play, CheckCircle, XCircle, Server, FileCode, UserCheck, ArrowRight, Check, X, Search, Code, FileText, Gavel, Fingerprint, Box, Loader, Lightbulb, List, Globe, Key, Settings, Cpu, FileWarning, Workflow, HardDrive, Smartphone, Monitor, Zap, MessageSquare, Copy, RefreshCw, StopCircle, Snail, Unlock, Send, Upload, Mail, Filter, UserPlus, Wrench, MessageCircle, EyeOff, Ghost, Layers, ChevronLeft, ChevronRight, Menu, ScanLine
-        } = LucideReact;
+        } from 'lucide-react';
 
         // --- 工具函数 ---
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
