@@ -102,6 +102,32 @@
 
 <body
     class="bg-gray-950 font-mono text-gray-200 antialiased selection:bg-green-500/40 selection:text-white overflow-hidden">
+    <div id="debug-console"
+        style="position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; background: rgba(255,0,0,0.9); color: white; padding: 10px; display: none; white-space: pre-wrap; font-family: monospace;">
+    </div>
+    <script>
+            (function () {
+                var debugConsole = document.getElementById('debug-console');
+                function logError(msg) {
+                    debugConsole.style.display = 'block';
+                    debugConsole.innerHTML += '<div>' + msg + '</div>';
+                    console.error(msg);
+                }
+                window.onerror = function (message, source, lineno, colno, error) {
+                    logError("Global Error: " + message + " at " + source + ":" + lineno + ":" + colno);
+                };
+                window.addEventListener('unhandledrejection', function (event) {
+                    logError("Unhandled Rejection: " + event.reason);
+                });
+                // Check Globals
+                window.addEventListener('load', function () {
+                    if (!window.React) logError("Critical: window.React is undefined");
+                    if (!window.ReactDOM) logError("Critical: window.ReactDOM is undefined");
+                    if (!window.LucideReact) logError("Critical: window.LucideReact is undefined");
+                    if (!window.Babel) logError("Critical: window.Babel is undefined");
+                });
+            })();
+    </script>
     <div id="root" class="h-screen flex flex-col"></div>
 
     <script type="text/babel">
