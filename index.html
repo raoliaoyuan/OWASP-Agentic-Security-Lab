@@ -123,7 +123,18 @@
                 window.addEventListener('load', function () {
                     if (!window.React) logError("Critical: window.React is undefined");
                     if (!window.ReactDOM) logError("Critical: window.ReactDOM is undefined");
-                    if (!window.LucideReact) logError("Critical: window.LucideReact is undefined");
+                    if (!window.LucideReact) {
+                        logError("Critical: window.LucideReact is undefined");
+                    } else {
+                        var keys = Object.keys(window.LucideReact);
+                        if (keys.length === 0) {
+                            logError("Critical: window.LucideReact is present but EMPTY (0 exported keys)");
+                        } else {
+                            if (!window.LucideReact.Shield) {
+                                logError("Critical: LucideReact.Shield is undefined. Keys found: " + keys.length + ". First 10: " + keys.slice(0, 10).join(", "));
+                            }
+                        }
+                    }
                     if (!window.Babel) logError("Critical: window.Babel is undefined");
                 });
             })();
