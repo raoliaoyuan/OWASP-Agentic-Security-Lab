@@ -108,6 +108,42 @@
 
 <body
     class="bg-gray-950 font-mono text-gray-200 antialiased selection:bg-green-500/40 selection:text-white overflow-hidden">
+    <!-- Debug Console (Re-injected) -->
+    <div id="debug-console"
+        style="position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; background: rgba(185, 28, 28, 0.95); color: white; padding: 16px; display: none; white-space: pre-wrap; font-family: monospace; font-size: 14px; border-bottom: 2px solid white;">
+    </div>
+    <script>
+            (function () {
+                var debugConsole = document.getElementById('debug-console');
+                function logError(msg) {
+                    if (debugConsole) {
+                        debugConsole.style.display = 'block';
+                        debugConsole.innerHTML += '<div style="margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">➤ ' + msg + '</div>';
+                    }
+                    console.error(msg);
+                }
+                window.onerror = function (message, source, lineno, colno, error) {
+                    logError("Global Error: " + message + " <br><span style='font-size:0.8em; opacity:0.8'>@" + (source || 'unknown') + ":" + lineno + "</span>");
+                };
+                window.addEventListener('unhandledrejection', function (event) {
+                    logError("Unhandled Rejection: " + (event.reason ? (event.reason.message || event.reason) : event));
+                });
+                window.addEventListener('load', function () {
+                    // Check Import Map Support
+                    if (HTMLScriptElement.supports && !HTMLScriptElement.supports('importmap')) {
+                        logError("Critical: Your browser does NOT support Import Maps. Please update Chrome/Edge/Firefox.");
+                    }
+                    // Check Rendering
+                    setTimeout(function () {
+                        var root = document.getElementById('root');
+                        if (!root || root.innerHTML.trim() === '') {
+                            logError("Warning: Root element is empty 2 seconds after load. React rendering failed silently.");
+                            logError("Hint: If you are opening this file locally (file://), Import Maps may be blocked by CORS policy. Please use 'python -m http.server' and visit localhost:8080.");
+                        }
+                    }, 2000);
+                });
+            })();
+    </script>
 
     <div id="root" class="h-screen flex flex-col"></div>
 
